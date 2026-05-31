@@ -8,24 +8,19 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class CommandsDemoService {
   private final Map<String, AtomicLong> actionCounters = new ConcurrentHashMap<>();
   private final Map<String, String> lastActionBySender = new ConcurrentHashMap<>();
-  private final Map<String, String> runtimeValues = new ConcurrentHashMap<>();
-  private final Map<String, String> domainState = new ConcurrentHashMap<>();
-  private final Map<String, AtomicLong> numericState = new ConcurrentHashMap<>();
-
+  private final Map<String, String> aliases = new ConcurrentHashMap<>();
   private volatile Path dataDirectory;
 
   public void initialize(Path dataDirectory) {
     this.dataDirectory = dataDirectory;
-    runtimeValues.put("category", "Commands");
-    runtimeValues.put("defaultAction", "alias-check");
-    runtimeValues.put("initialized", "true");
+    aliases.clear();
+    aliases.put("spawn", "/warp spawn");
+    aliases.put("hub", "/warp hub");
   }
 
   public void onHeartbeat(long tick) {
     actionCounters.computeIfAbsent("heartbeat", key -> new AtomicLong()).incrementAndGet();
-    if (tick % 120 == 0) {
-      runtimeValues.put("lastHeartbeat", String.valueOf(tick));
-    }
+
   }
 
   public void recordExternalEvent(String key) {
@@ -41,7 +36,6 @@ public final class CommandsDemoService {
 
     if ("toggle".equals(normalizedAction)) {
       boolean enabled = state.toggleDemoFlag();
-      runtimeValues.put("demoFlag", String.valueOf(enabled));
       return "[Commands] demoFlag=" + enabled + ", heartbeatTicks=" + heartbeatTicks;
     }
 
@@ -71,50 +65,27 @@ public final class CommandsDemoService {
 
   public String diagnostics() {
     String directory = dataDirectory == null ? "unset" : dataDirectory.toString();
-    return "ops="
-        + operationCount()
-        + ", trackedActions="
-        + actionCounters.size()
-        + ", domainEntries="
-        + domainState.size()
-        + ", numericEntries="
-        + numericState.size()
-        + ", dataDirectory="
-        + directory;
+    return "ops=" + operationCount()
+        + ", aliases=" + aliases.size()
+        + ", dataDirectory=" + directory;
   }
 
   public void shutdown() {
-    runtimeValues.put("initialized", "false");
+    aliases.clear();
   }
 
   private String handleDomainAction(String sender, String action, long heartbeatTicks) {
     if ("sample".equals(action) || "alias-check".equals(action)) {
-      domainState.put("alias:shop", "market");
-      domainState.put("alias:spawn", "hub");
-      return "aliasCount=2, shop->" + domainState.get("alias:shop");
+      return "aliases=" + aliases;
     }
     if ("register-alias".equals(action)) {
-      String aliasKey = "alias:user:" + sender.toLowerCase();
-      domainState.put(aliasKey, "home");
-      return "registered " + aliasKey + " -> home";
+      aliases.put("kit", "/player kit starter");
+      return "registered alias kit -> /player kit starter";
     }
     if ("resolve-alias".equals(action)) {
-      String aliasKey = "alias:user:" + sender.toLowerCase();
-      return aliasKey + " -> " + domainState.getOrDefault(aliasKey, "<missing>");
+      return "spawn resolves to " + aliases.getOrDefault("spawn", "missing");
     }
     return null;
-  }
-
-  private long incrementNumber(String key, long delta) {
-    return numericState.computeIfAbsent(key, item -> new AtomicLong()).addAndGet(delta);
-  }
-
-  private long number(String key) {
-    return numericState.computeIfAbsent(key, item -> new AtomicLong()).get();
-  }
-
-  private void setNumber(String key, long value) {
-    numericState.computeIfAbsent(key, item -> new AtomicLong()).set(value);
   }
 
   private static String normalizeAction(String action) {
